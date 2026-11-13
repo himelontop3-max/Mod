@@ -1,0 +1,63 @@
+name: Build VRON OS v2.0
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract VRON source
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:GITHUB_WORKSPACE "VRON_OS_v2.0_GITHUB_READY_FIXED2.zip"
+
+          if (!(Test-Path $zip)) {
+            throw "VRON ZIP not found!"
+          }
+
+          Expand-Archive -LiteralPath $zip -DestinationPath "$env:GITHUB_WORKSPACE/source" -Force
+
+      - name: Find project
+        id: locate
+        shell: pwsh
+        run: |
+          $project = Get-ChildItem "$env:GITHUB_WORKSPACE/source" -Filter "VRON.Shell.csproj" -Recurse | Select-Object -First 1
+
+          if (!$project) {
+            throw "VRON project file not found!"
+          }
+
+          "project=$($project.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build VRON OS
+        shell: pwsh
+        run: |
+          dotnet publish "${{ steps.locate.outputs.project }}" `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -o "$env:GITHUB_WORKSPACE/publish"
+
+      - name: Upload VRON Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: VRON-OS-v2.0-Windows-x64
+          path: publish/
+          if-no-files-found: error
